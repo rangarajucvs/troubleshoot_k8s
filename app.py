@@ -94,17 +94,13 @@ if submitted:
         try:
             with st.spinner("Searching Kubernetes sources and preparing a response..."):
                 selected_model = st.session_state["gemini_model"]
-                answer, results, search_errors = research_issue(
+                answer, results, _ = research_issue(
                     issue,
                     api_key=st.session_state["gemini_api_key"].strip(),
                     model=None if selected_model == AUTO_MODEL_OPTION else selected_model,
                     available_models=available_models,
                 )
                 if not results:
-                    if search_errors:
-                        with st.expander("Some source searches or pages could not be retrieved"):
-                            for error in search_errors:
-                                st.warning(error)
                     st.error(
                         "No search results were retrieved, so a source-grounded response "
                         "could not be prepared."
@@ -113,7 +109,6 @@ if submitted:
                     st.session_state["investigation"] = {
                         "answer": answer,
                         "results": results,
-                        "search_errors": search_errors,
                     }
         except (RuntimeError, ValueError) as exc:
             st.error(str(exc))
@@ -126,11 +121,6 @@ if investigation:
         answer = " ".join(answer.split()[:MAX_ANSWER_WORDS])
     st.markdown(answer)
     st.caption(f"Response length: {len(answer.split())} / {MAX_ANSWER_WORDS} words")
-
-    if investigation["search_errors"]:
-        with st.expander("Some source searches or pages could not be retrieved"):
-            for error in investigation["search_errors"]:
-                st.warning(error)
 
     st.subheader("Sources found")
     for index, result in enumerate(investigation["results"], start=1):

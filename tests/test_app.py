@@ -37,6 +37,21 @@ class AppTests(unittest.TestCase):
         self.assertEqual(app.text_area[0].value, issue)
         self.assertFalse(app.exception)
 
+    def test_search_errors_are_not_shown_in_output(self):
+        app_path = Path(__file__).resolve().parents[1] / "app.py"
+        app = AppTest.from_file(str(app_path)).run()
+        app.session_state["investigation"] = {
+            "answer": "Summary",
+            "results": [],
+            "search_errors": ["search timed out"],
+        }
+
+        app.run()
+
+        self.assertEqual(app.get("warning"), [])
+        self.assertEqual(app.expander, [])
+        self.assertFalse(app.exception)
+
 
 if __name__ == "__main__":
     unittest.main()

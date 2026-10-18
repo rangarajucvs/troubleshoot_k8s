@@ -119,6 +119,34 @@ class ResearchTests(unittest.TestCase):
         self.assertIn("timed out after 30s", error)
         self.assertIn("proxy settings", error)
 
+    @patch("k8s_research.DDGS")
+    def test_repost_knowledge_center_is_searched(self, ddgs_class):
+        ddgs_class.return_value.__enter__.return_value.text.return_value = []
+        repost_source = next(
+            source for source in SOURCES if source.name == "AWS re:Post Knowledge Center"
+        )
+
+        _search_source(repost_source, "EKS pod networking", result_limit=2)
+
+        query = ddgs_class.return_value.__enter__.return_value.text.call_args.args[0]
+        self.assertIn("site:repost.aws/knowledge-center", query)
+        self.assertIn("EKS pod networking", query)
+
+    @patch("k8s_research.DDGS")
+    def test_aws_and_istio_github_issue_repositories_are_searched(self, ddgs_class):
+        ddgs_class.return_value.__enter__.return_value.text.return_value = []
+        eks_issue_source = next(
+            source for source in SOURCES if source.name == "AWS and Istio GitHub issues"
+        )
+
+        _search_source(eks_issue_source, "EKS CNI failure", result_limit=2)
+
+        query = ddgs_class.return_value.__enter__.return_value.text.call_args.args[0]
+        self.assertIn("site:github.com/aws/", query)
+        self.assertIn("site:github.com/istio/", query)
+        self.assertIn("site:github.com/aws/containers-roadmap/issues", query)
+        self.assertIn("site:github.com/kubernetes/cloud-provider-aws/issues", query)
+
     @patch("k8s_research._search_source")
     def test_deduplicates_results_and_collects_source_errors(self, search_source):
         result = SearchResult(
@@ -126,7 +154,7 @@ class ResearchTests(unittest.TestCase):
         )
         search_source.side_effect = [([result], None), ([result], "source unavailable")] + [
             ([], None)
-        ] * 11
+        ] * (len(SOURCES) - 2)
 
         with patch(
             "k8s_research._fetch_page_content", return_value=(result, None)

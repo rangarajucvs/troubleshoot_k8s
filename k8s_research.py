@@ -47,12 +47,18 @@ class SearchResult:
 SOURCES = (
     SearchSource("Kubernetes upstream documentation", "site:kubernetes.io/docs"),
     SearchSource("Amazon EKS documentation", "site:docs.aws.amazon.com/eks"),
+    SearchSource(
+        "AWS re:Post Knowledge Center",
+        "site:repost.aws/knowledge-center",
+    ),
     SearchSource("Google GKE documentation", "site:cloud.google.com/kubernetes-engine"),
     SearchSource("Microsoft AKS documentation", "site:learn.microsoft.com/azure/aks"),
     SearchSource("Oracle OKE documentation", "site:docs.oracle.com/en-us/iaas/Content/ContEng"),
     SearchSource("Kubernetes upstream GitHub issues", "site:github.com/kubernetes/kubernetes/issues"),
     SearchSource(
-        "Amazon EKS GitHub issues",
+        "AWS and Istio GitHub issues",
+        "site:github.com/aws/ OR "
+        "site:github.com/istio/ OR "
         "site:github.com/aws/containers-roadmap/issues OR "
         "site:github.com/kubernetes/cloud-provider-aws/issues",
     ),

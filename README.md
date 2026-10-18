@@ -27,9 +27,11 @@ substitute for vendor guidance or testing changes in a safe environment.
    written to source files or investigation results. Changing the key requires
    reloading the model list.
 
-The app searches Kubernetes, EKS, GKE, AKS, and OKE documentation; selected
-Kubernetes/cloud-provider GitHub issue pages; Reddit; Stack Overflow; and
-Server Fault. It uses the maintained `ddgs` package for discovery (the
+The app searches Kubernetes, EKS, AWS re:Post Knowledge Center, GKE, AKS, and OKE
+documentation; selected Kubernetes/cloud-provider GitHub issue pages; Reddit;
+Stack Overflow; and Server Fault. GitHub issue searches include AWS- and
+Istio-owned repositories, alongside Kubernetes cloud-provider repositories.
+The app uses the maintained `ddgs` package for discovery (the
 `duckduckgo-search` project has been renamed to `ddgs`), fetches top matching
 pages when available, and uses Gemini to summarize retrieved page text and
 search excerpts. DDGS uses automatic metasearch with a 30-second timeout; the

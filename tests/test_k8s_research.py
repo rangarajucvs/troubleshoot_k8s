@@ -147,6 +147,35 @@ class ResearchTests(unittest.TestCase):
 
         self.assertEqual(chat_model.call_args.kwargs["model"], "gemini-custom")
 
+    @patch("langchain_google_genai.ChatGoogleGenerativeAI")
+    def test_synthesis_extracts_text_from_gemini_3_content_blocks(self, chat_model):
+        chat_model.return_value.invoke.return_value = Mock(
+            content=[
+                {"type": "thinking", "thinking": "internal reasoning"},
+                {"type": "text", "text": "  Summary of problem.  "},
+                {"type": "text", "text": "Next steps."},
+            ]
+        )
+
+        answer = synthesize_answer(
+            "pod pending", [], api_key="test-key", model="gemini-3.1-flash-lite"
+        )
+
+        self.assertEqual(answer, "Summary of problem.\nNext steps.")
+
+    @patch("langchain_google_genai.ChatGoogleGenerativeAI")
+    def test_empty_gemini_response_has_actionable_diagnostic(self, chat_model):
+        chat_model.return_value.invoke.return_value = Mock(
+            content="",
+            response_metadata={"finish_reason": "SAFETY"},
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "SAFETY") as error:
+            synthesize_answer(
+                "pod pending", [], api_key="test-key", model="gemini-3.1-flash-lite"
+            )
+        self.assertIn("Try rephrasing", str(error.exception))
+
     @patch.dict("os.environ", {}, clear=True)
     def test_synthesis_reports_missing_api_key(self):
         with self.assertRaisesRegex(RuntimeError, "GOOGLE_API_KEY or GEMINI_API_KEY"):

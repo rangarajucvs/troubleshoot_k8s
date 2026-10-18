@@ -296,6 +296,21 @@ def _resolve_latest_flash_lite_model(available_models: Iterable[str]) -> str:
     return max(candidates)[1]
 
 
+def _extract_response_text(content: object) -> str:
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        text_blocks = [
+            block["text"]
+            for block in content
+            if isinstance(block, dict)
+            and block.get("type") == "text"
+            and isinstance(block.get("text"), str)
+        ]
+        return "\n".join(text.strip() for text in text_blocks if text.strip())
+    return ""
+
+
 def synthesize_answer(
     issue: str,
     results: Iterable[SearchResult],
@@ -361,9 +376,17 @@ def synthesize_answer(
     except (APIError, ValueError, requests.RequestException) as exc:
         raise RuntimeError(f"Could not generate the response with Gemini: {exc}") from exc
 
-    content = response.content
-    if not isinstance(content, str) or not content.strip():
-        raise RuntimeError("The synthesis service returned an empty response.")
+    content = _extract_response_text(response.content)
+    if not content:
+        metadata = getattr(response, "response_metadata", {})
+        finish_reason = metadata.get("finish_reason") if isinstance(metadata, dict) else None
+        details = f" Finish reason: {finish_reason}." if finish_reason else ""
+        raise RuntimeError(
+            f"Gemini returned no user-facing text for model '{model}'.{details} "
+            "The response may have been blocked by a safety filter or contained "
+            "only non-text output. Try rephrasing the issue or selecting another "
+            "Gemini model."
+        )
 
     words = content.split()
     if len(words) > MAX_ANSWER_WORDS:

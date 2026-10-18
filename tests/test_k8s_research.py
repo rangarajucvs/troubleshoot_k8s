@@ -133,6 +133,35 @@ class ResearchTests(unittest.TestCase):
         self.assertIn("EKS pod networking", query)
 
     @patch("k8s_research.DDGS")
+    def test_red_hat_openshift_documentation_is_searched(self, ddgs_class):
+        ddgs_class.return_value.__enter__.return_value.text.return_value = []
+        openshift_source = next(
+            source for source in SOURCES if source.name == "Red Hat OpenShift documentation"
+        )
+
+        _search_source(openshift_source, "OpenShift pod networking", result_limit=2)
+
+        query = ddgs_class.return_value.__enter__.return_value.text.call_args.args[0]
+        self.assertIn(
+            "site:docs.redhat.com/en/documentation/openshift_container_platform", query
+        )
+        self.assertIn("site:docs.openshift.com", query)
+        self.assertIn("OpenShift pod networking", query)
+
+    @patch("k8s_research.DDGS")
+    def test_openshift_github_repositories_are_searched(self, ddgs_class):
+        ddgs_class.return_value.__enter__.return_value.text.return_value = []
+        openshift_source = next(
+            source for source in SOURCES if source.name == "OpenShift GitHub repositories"
+        )
+
+        _search_source(openshift_source, "OpenShift pod networking", result_limit=2)
+
+        query = ddgs_class.return_value.__enter__.return_value.text.call_args.args[0]
+        self.assertIn("site:github.com/openshift/", query)
+        self.assertIn("OpenShift pod networking", query)
+
+    @patch("k8s_research.DDGS")
     def test_aws_and_istio_github_issue_repositories_are_searched(self, ddgs_class):
         ddgs_class.return_value.__enter__.return_value.text.return_value = []
         eks_issue_source = next(

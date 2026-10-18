@@ -13,8 +13,9 @@ st.set_page_config(page_title="Kubernetes Issue Researcher", page_icon="☸️",
 st.title("Kubernetes Issue Researcher")
 st.write(
     "Enter a Kubernetes error or issue. The agent searches upstream and cloud-provider "
-    "documentation, relevant GitHub issues, Reddit, Stack Overflow, and Server Fault, "
-    "then provides best-effort next steps. No conversation history is kept."
+    "documentation, Red Hat OpenShift documentation, relevant GitHub issues, Reddit, "
+    "Stack Overflow, and Server Fault, then provides best-effort next steps. "
+    "No conversation history is kept."
 )
 st.caption(
     "Best-effort guidance only. Verify recommendations against your cluster, "

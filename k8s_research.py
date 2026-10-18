@@ -54,7 +54,13 @@ SOURCES = (
     SearchSource("Google GKE documentation", "site:cloud.google.com/kubernetes-engine"),
     SearchSource("Microsoft AKS documentation", "site:learn.microsoft.com/azure/aks"),
     SearchSource("Oracle OKE documentation", "site:docs.oracle.com/en-us/iaas/Content/ContEng"),
+    SearchSource(
+        "Red Hat OpenShift documentation",
+        "site:docs.redhat.com/en/documentation/openshift_container_platform OR "
+        "site:docs.openshift.com",
+    ),
     SearchSource("Kubernetes upstream GitHub issues", "site:github.com/kubernetes/kubernetes/issues"),
+    SearchSource("OpenShift GitHub repositories", "site:github.com/openshift/"),
     SearchSource(
         "AWS and Istio GitHub issues",
         "site:github.com/aws/ OR "

@@ -11,9 +11,19 @@ class AppTests(unittest.TestCase):
         app.text_area[0].set_value("Pod is stuck in Pending")
         app.run()
 
-        app.button[0].click().run()
+        app.button[1].click().run()
 
         self.assertEqual(app.text_area[0].value, "")
+        self.assertEqual(app.text_input[0].value, "")
+        self.assertFalse(app.exception)
+
+    def test_api_key_is_password_field_and_model_dropdown_is_visible(self):
+        app_path = Path(__file__).resolve().parents[1] / "app.py"
+        app = AppTest.from_file(str(app_path)).run()
+
+        self.assertEqual(app.text_input[0].label, "Gemini API key")
+        self.assertEqual(app.text_input[0].proto.type, app.text_input[0].proto.PASSWORD)
+        self.assertEqual(app.selectbox[0].label, "Gemini model")
         self.assertFalse(app.exception)
 
 

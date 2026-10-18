@@ -12,6 +12,7 @@ from k8s_research import (
     _DuckDuckGoResultsParser,
     _PageTextParser,
     _resolve_latest_flash_lite_model,
+    list_gemini_models,
     research_issue,
     search_sources,
     synthesize_answer,
@@ -75,10 +76,12 @@ class ResearchTests(unittest.TestCase):
         self.assertEqual(errors, ["source unavailable"])
         fetch_page.assert_called_once_with(result)
 
-    @patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}, clear=True)
     @patch("k8s_research._resolve_latest_flash_lite_model", return_value="gemini-3.1-flash-lite")
+    @patch("k8s_research.list_gemini_models", return_value=["gemini-3.1-flash-lite"])
     @patch("langchain_google_genai.ChatGoogleGenerativeAI")
-    def test_synthesis_uses_latest_flash_lite_and_caps_response(self, chat_model, resolve_model):
+    def test_synthesis_uses_latest_flash_lite_and_caps_response(
+        self, chat_model, _list_models, resolve_model
+    ):
         chat_model.return_value.invoke.return_value = Mock(
             content="word " * (MAX_ANSWER_WORDS + 20)
         )
@@ -86,6 +89,7 @@ class ResearchTests(unittest.TestCase):
         answer = synthesize_answer(
             "pod pending",
             [SearchResult(SOURCES[0].name, "Scheduling", "https://example.com", "excerpt")],
+            api_key="test-key",
         )
 
         self.assertEqual(len(answer.split()), MAX_ANSWER_WORDS)
@@ -93,76 +97,87 @@ class ResearchTests(unittest.TestCase):
         self.assertEqual(kwargs["model"], "gemini-3.1-flash-lite")
         self.assertEqual(kwargs["google_api_key"], "test-key")
         self.assertEqual(kwargs["max_output_tokens"], 1800)
-        resolve_model.assert_called_once_with("test-key")
+        resolve_model.assert_called_once_with(["gemini-3.1-flash-lite"])
+
+    def test_resolver_selects_newest_stable_flash_lite(self):
+        selected_model = _resolve_latest_flash_lite_model(
+            [
+                "gemini-2.5-flash-lite",
+                "gemini-3.1-flash-lite",
+                "gemini-3.8-flash-lite-preview",
+            ]
+        )
+
+        self.assertEqual(selected_model, "gemini-3.1-flash-lite")
 
     @patch("k8s_research.genai.Client")
-    def test_resolver_selects_newest_stable_supported_flash_lite(self, client_class):
+    def test_lists_only_models_supporting_generation(self, client_class):
         client_class.return_value.close.return_value = None
         client_class.return_value.models.list.return_value = [
-            SimpleNamespace(
-                name="models/gemini-2.5-flash-lite",
-                supported_actions=["generateContent"],
-            ),
             SimpleNamespace(
                 name="models/gemini-3.1-flash-lite",
                 supported_actions=["generateContent"],
             ),
-            SimpleNamespace(
-                name="models/gemini-3.8-flash-lite-preview",
-                supported_actions=["generateContent"],
-            ),
-            SimpleNamespace(
-                name="models/gemini-4.0-flash-lite",
-                supported_actions=["embedContent"],
-            ),
+            SimpleNamespace(name="models/embedding-001", supported_actions=["embedContent"]),
         ]
 
-        selected_model = _resolve_latest_flash_lite_model("test-key")
+        models = list_gemini_models("user-key")
 
-        self.assertEqual(selected_model, "gemini-3.1-flash-lite")
-        client_class.assert_called_once_with(api_key="test-key")
+        self.assertEqual(models, ["gemini-3.1-flash-lite"])
+        client_class.assert_called_once_with(api_key="user-key")
         client_class.return_value.close.assert_called_once_with()
 
-    @patch.dict(
-        "os.environ",
-        {"GOOGLE_API_KEY": "test-key", "GEMINI_MODEL": "gemini-custom"},
-        clear=True,
-    )
-    @patch("k8s_research._resolve_latest_flash_lite_model")
+    @patch("k8s_research.genai.Client")
+    def test_model_listing_reports_invalid_api_key(self, client_class):
+        client_class.return_value.close.return_value = None
+        client_class.return_value.models.list.side_effect = APIError(
+            400, {"error": {"message": "API key not valid"}}
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "Could not load Gemini models"):
+            list_gemini_models("invalid-key")
+        client_class.return_value.close.assert_called_once_with()
+
+    @patch.dict("os.environ", {}, clear=True)
     @patch("langchain_google_genai.ChatGoogleGenerativeAI")
-    def test_configured_model_overrides_dynamic_discovery(
-        self, chat_model, resolve_model
-    ):
+    def test_explicit_model_skips_model_discovery(self, chat_model):
         chat_model.return_value.invoke.return_value = Mock(content="Summary")
 
-        synthesize_answer("pod pending", [])
+        synthesize_answer("pod pending", [], api_key="test-key", model="gemini-custom")
 
         self.assertEqual(chat_model.call_args.kwargs["model"], "gemini-custom")
-        resolve_model.assert_not_called()
 
     @patch.dict("os.environ", {}, clear=True)
     def test_synthesis_reports_missing_api_key(self):
         with self.assertRaisesRegex(RuntimeError, "GOOGLE_API_KEY or GEMINI_API_KEY"):
             synthesize_answer("pod pending", [])
 
-    @patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}, clear=True)
+    @patch.dict("os.environ", {}, clear=True)
     @patch(
         "k8s_research._resolve_latest_flash_lite_model",
         return_value="gemini-3.1-flash-lite",
     )
+    @patch("k8s_research.list_gemini_models", return_value=["gemini-3.1-flash-lite"])
     @patch("langchain_google_genai.ChatGoogleGenerativeAI")
-    def test_synthesis_surfaces_gemini_api_errors(self, chat_model, _resolve_model):
+    def test_synthesis_surfaces_gemini_api_errors(
+        self, chat_model, _list_models, _resolve_model
+    ):
         chat_model.return_value.invoke.side_effect = APIError(
             503, {"error": {"message": "service timed out"}}
         )
 
         with self.assertRaisesRegex(RuntimeError, "service timed out"):
-            synthesize_answer("pod pending", [])
+            synthesize_answer("pod pending", [], api_key="test-key")
 
     @patch("k8s_research.search_sources", return_value=([], ["search unavailable"]))
     @patch("k8s_research.synthesize_answer")
     def test_graph_skips_synthesis_without_search_results(self, synthesize, _search):
-        answer, results, errors = research_issue("pod pending")
+        answer, results, errors = research_issue(
+            "pod pending",
+            api_key="user-key",
+            model="gemini-3.1-flash",
+            available_models=["gemini-3.1-flash", "gemini-3.1-flash-lite"],
+        )
 
         self.assertEqual(answer, "")
         self.assertEqual(results, [])
@@ -177,13 +192,24 @@ class ResearchTests(unittest.TestCase):
         )
         search.return_value = ([result], [])
 
-        answer, results, errors = research_issue("pod pending")
+        answer, results, errors = research_issue(
+            "pod pending",
+            api_key="user-key",
+            model="gemini-3.1-flash",
+            available_models=["gemini-3.1-flash", "gemini-3.1-flash-lite"],
+        )
 
         self.assertEqual(answer, "Summary")
         self.assertEqual(results, [result])
         self.assertEqual(errors, [])
         search.assert_called_once_with("pod pending")
-        synthesize.assert_called_once_with("pod pending", [result])
+        synthesize.assert_called_once_with(
+            "pod pending",
+            [result],
+            "user-key",
+            "gemini-3.1-flash",
+            ["gemini-3.1-flash", "gemini-3.1-flash-lite"],
+        )
 
 
 if __name__ == "__main__":

@@ -14,22 +14,18 @@ substitute for vendor guidance or testing changes in a safe environment.
    python -m pip install -r requirements.txt
    ```
 
-3. Set a Google AI Studio API key. By default, the app checks the models
-   available to that key and selects the newest stable Gemini Flash-Lite model
-   that supports text generation. To pin a particular available model:
-
-   ```bash
-   export GOOGLE_API_KEY="your-api-key"
-   export GEMINI_MODEL="gemini-3.1-flash-lite"
-   ```
-
-   `GEMINI_API_KEY` is also accepted in place of `GOOGLE_API_KEY`.
-
-4. Start Streamlit:
+3. Start Streamlit:
 
    ```bash
    streamlit run app.py
    ```
+
+4. Paste your Gemini API key in the password-masked field, select **Load
+   available Gemini models**, then choose a model from the dropdown. The default
+   option automatically uses the newest stable Flash-Lite model available to
+   your key. The key is kept in the current Streamlit session only and is not
+   written to source files or investigation results. Changing the key requires
+   reloading the model list.
 
 The app searches Kubernetes, EKS, GKE, AKS, and OKE documentation; selected
 Kubernetes/cloud-provider GitHub issue pages; Reddit; Stack Overflow; and
@@ -41,7 +37,8 @@ Google Generative AI integration calls Gemini. The app does not use Google ADK:
 its single fixed workflow does not need a second agent/orchestration runtime.
 Search results and model output depend on external services and can be incomplete
 or incorrect. The issue text is sent to DuckDuckGo and Google Gemini; do not
-submit secrets, credentials, or sensitive cluster data.
+submit secrets, credentials, or sensitive cluster data. The Gemini key is sent
+to Google's model API to list models and generate the response.
 Flash-Lite is Google's cost-focused Gemini family; its
 [Gemini 3.1 Flash-Lite model](https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite)
 is described as cost-effective. Model pricing can change, so check

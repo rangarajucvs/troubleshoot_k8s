@@ -23,6 +23,7 @@ SYNTHESIS_TIMEOUT_SECONDS = 60
 MAX_SEARCH_QUERY_CHARS = 300
 MAX_PAGE_EXCERPT_CHARS = 1800
 FLASH_LITE_MODEL_PATTERN = re.compile(r"^gemini-(\d+(?:\.\d+)*)-flash-lite$")
+AUTO_MODEL_OPTION = "Auto (newest stable Flash-Lite)"
 
 
 @dataclass(frozen=True)
@@ -256,35 +257,54 @@ def search_sources(issue: str, result_limit: int = 2) -> tuple[list[SearchResult
     return enriched_results, errors
 
 
-def _resolve_latest_flash_lite_model(api_key: str) -> str:
-    """Choose the newest stable Flash-Lite model enabled for this API key."""
+def list_gemini_models(api_key: str) -> list[str]:
+    """List Gemini models enabled for the supplied key that support generation."""
     client = genai.Client(api_key=api_key)
-    candidates: list[tuple[tuple[int, ...], str]] = []
     try:
-        for available_model in client.models.list():
-            name = (available_model.name or "").removeprefix("models/")
-            version_match = FLASH_LITE_MODEL_PATTERN.fullmatch(name)
-            if (
-                version_match
-                and "generateContent" in (available_model.supported_actions or [])
-            ):
-                version = tuple(int(part) for part in version_match.group(1).split("."))
-                candidates.append((version, name))
+        try:
+            names = {
+                (available_model.name or "").removeprefix("models/")
+                for available_model in client.models.list()
+                if "generateContent" in (available_model.supported_actions or [])
+                and (available_model.name or "")
+                .removeprefix("models/")
+                .startswith("gemini-")
+            }
+        except APIError as exc:
+            raise RuntimeError(f"Could not load Gemini models: {exc}") from exc
     finally:
         client.close()
+    if not names:
+        raise RuntimeError("Google did not list any Gemini models that support generation.")
+    return sorted(names)
+
+
+def _resolve_latest_flash_lite_model(available_models: Iterable[str]) -> str:
+    """Choose the newest stable Flash-Lite model from an available model list."""
+    candidates: list[tuple[tuple[int, ...], str]] = []
+    for name in available_models:
+        version_match = FLASH_LITE_MODEL_PATTERN.fullmatch(name)
+        if version_match:
+            version = tuple(int(part) for part in version_match.group(1).split("."))
+            candidates.append((version, name))
 
     if not candidates:
         raise RuntimeError(
-            "Google did not list a stable Gemini Flash-Lite model that supports "
-            "content generation for this API key. Set GEMINI_MODEL to choose an "
-            "available model explicitly."
+            "Google did not list a stable Gemini Flash-Lite model for this key. "
+            "Choose a model explicitly from the dropdown."
         )
     return max(candidates)[1]
 
 
-def synthesize_answer(issue: str, results: Iterable[SearchResult]) -> str:
+def synthesize_answer(
+    issue: str,
+    results: Iterable[SearchResult],
+    api_key: str | None = None,
+    model: str | None = None,
+    available_models: Iterable[str] | None = None,
+) -> str:
     """Use the newest stable cost-efficient Gemini Flash-Lite model by default."""
-    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError(
             "Set GOOGLE_API_KEY or GEMINI_API_KEY before running an investigation."
@@ -316,7 +336,12 @@ def synthesize_answer(issue: str, results: Iterable[SearchResult]) -> str:
         f"Keep the complete answer under {MAX_ANSWER_WORDS} words."
     )
     try:
-        model = os.getenv("GEMINI_MODEL") or _resolve_latest_flash_lite_model(api_key)
+        model = (
+            model
+            or _resolve_latest_flash_lite_model(
+                available_models or list_gemini_models(api_key)
+            )
+        )
         chat_model = ChatGoogleGenerativeAI(
             model=model,
             google_api_key=api_key,
@@ -348,6 +373,9 @@ def synthesize_answer(issue: str, results: Iterable[SearchResult]) -> str:
 
 class ResearchState(TypedDict, total=False):
     issue: str
+    api_key: str
+    model: str | None
+    available_models: list[str]
     results: list[SearchResult]
     errors: list[str]
     answer: str
@@ -359,7 +387,15 @@ def _search_node(state: ResearchState) -> ResearchState:
 
 
 def _synthesize_node(state: ResearchState) -> ResearchState:
-    return {"answer": synthesize_answer(state["issue"], state.get("results", []))}
+    return {
+        "answer": synthesize_answer(
+            state["issue"],
+            state.get("results", []),
+            state.get("api_key"),
+            state.get("model"),
+            state.get("available_models"),
+        )
+    }
 
 
 def _route_after_search(state: ResearchState) -> Literal["synthesize", "no_results"]:
@@ -383,9 +419,21 @@ def _build_research_graph():
 _RESEARCH_GRAPH = _build_research_graph()
 
 
-def research_issue(issue: str) -> tuple[str, list[SearchResult], list[str]]:
+def research_issue(
+    issue: str,
+    api_key: str | None = None,
+    model: str | None = None,
+    available_models: list[str] | None = None,
+) -> tuple[str, list[SearchResult], list[str]]:
     """Run a stateless search-then-synthesize investigation through LangGraph."""
     if len(issue.split()) > MAX_QUERY_WORDS:
         raise ValueError(f"Enter no more than {MAX_QUERY_WORDS} words.")
-    state = _RESEARCH_GRAPH.invoke({"issue": issue})
+    state = _RESEARCH_GRAPH.invoke(
+        {
+            "issue": issue,
+            "api_key": api_key,
+            "model": model,
+            "available_models": available_models or [],
+        }
+    )
     return state.get("answer", ""), state["results"], state["errors"]

@@ -1,8 +1,12 @@
-import os
-
 import streamlit as st
 
-from k8s_research import MAX_ANSWER_WORDS, MAX_QUERY_WORDS, research_issue
+from k8s_research import (
+    AUTO_MODEL_OPTION,
+    MAX_ANSWER_WORDS,
+    MAX_QUERY_WORDS,
+    list_gemini_models,
+    research_issue,
+)
 
 
 st.set_page_config(page_title="Kubernetes Issue Researcher", page_icon="☸️", layout="wide")
@@ -20,6 +24,39 @@ st.caption(
     "Issue text is sent to DuckDuckGo for search and to Google Gemini for synthesis. "
     "Do not include credentials, secrets, or sensitive cluster data."
 )
+
+
+def reset_gemini_models() -> None:
+    st.session_state.pop("available_gemini_models", None)
+    st.session_state["gemini_model"] = AUTO_MODEL_OPTION
+
+
+st.text_input(
+    "Gemini API key",
+    type="password",
+    key="gemini_api_key",
+    help="Your key is kept only in this Streamlit session and is not saved with results.",
+    on_change=reset_gemini_models,
+)
+if st.button("Load available Gemini models"):
+    api_key = st.session_state.get("gemini_api_key", "").strip()
+    if not api_key:
+        st.error("Enter your Gemini API key before loading models.")
+        st.session_state.pop("available_gemini_models", None)
+    else:
+        try:
+            with st.spinner("Loading models available to this API key..."):
+                st.session_state["available_gemini_models"] = list_gemini_models(api_key)
+            st.session_state["gemini_model"] = AUTO_MODEL_OPTION
+        except RuntimeError as exc:
+            st.session_state.pop("available_gemini_models", None)
+            st.error(str(exc))
+
+available_models = st.session_state.get("available_gemini_models", [])
+model_options = [AUTO_MODEL_OPTION, *available_models]
+if st.session_state.get("gemini_model") not in model_options:
+    st.session_state["gemini_model"] = AUTO_MODEL_OPTION
+st.selectbox("Gemini model", model_options, key="gemini_model")
 
 
 def clear_investigation() -> None:
@@ -46,12 +83,20 @@ if submitted:
         st.error("Enter an issue or error message to investigate.")
     elif word_count > MAX_QUERY_WORDS:
         st.error(f"The issue cannot exceed {MAX_QUERY_WORDS} words (currently {word_count}).")
-    elif not (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")):
-        st.error("Set GOOGLE_API_KEY or GEMINI_API_KEY before researching an issue.")
+    elif not st.session_state.get("gemini_api_key", "").strip():
+        st.error("Enter your Gemini API key before researching an issue.")
+    elif not available_models:
+        st.error("Load the models available to your API key before researching an issue.")
     else:
         try:
             with st.spinner("Searching Kubernetes sources and preparing a response..."):
-                answer, results, search_errors = research_issue(issue)
+                selected_model = st.session_state["gemini_model"]
+                answer, results, search_errors = research_issue(
+                    issue,
+                    api_key=st.session_state["gemini_api_key"].strip(),
+                    model=None if selected_model == AUTO_MODEL_OPTION else selected_model,
+                    available_models=available_models,
+                )
                 if not results:
                     if search_errors:
                         with st.expander("Some source searches or pages could not be retrieved"):

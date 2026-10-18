@@ -69,7 +69,10 @@ with st.form("investigation_form", clear_on_submit=False):
         key="issue_input",
         height=180,
         placeholder="Paste the error message and relevant context here...",
-        help=f"Maximum {MAX_QUERY_WORDS} words.",
+        help=(
+            f"Maximum {MAX_QUERY_WORDS} words. Double quotes are allowed, "
+            'for example: "Failed to create pod".'
+        ),
     )
     submitted = st.form_submit_button("Research issue", type="primary")
 

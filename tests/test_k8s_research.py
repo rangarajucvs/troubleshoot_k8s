@@ -97,6 +97,15 @@ class ResearchTests(unittest.TestCase):
         )
 
     @patch("k8s_research.DDGS")
+    def test_search_query_preserves_double_quoted_error_text(self, ddgs_class):
+        ddgs_class.return_value.__enter__.return_value.text.return_value = []
+
+        _search_source(SOURCES[0], 'Error: "failed to create pod"', result_limit=2)
+
+        query = ddgs_class.return_value.__enter__.return_value.text.call_args.args[0]
+        self.assertIn('"failed to create pod"', query)
+
+    @patch("k8s_research.DDGS")
     def test_search_reports_timeout_with_recovery_hint(self, ddgs_class):
         from ddgs.exceptions import TimeoutException
 

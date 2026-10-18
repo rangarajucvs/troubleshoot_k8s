@@ -26,6 +26,17 @@ class AppTests(unittest.TestCase):
         self.assertEqual(app.selectbox[0].label, "Gemini model")
         self.assertFalse(app.exception)
 
+    def test_issue_text_area_accepts_double_quotes(self):
+        app_path = Path(__file__).resolve().parents[1] / "app.py"
+        app = AppTest.from_file(str(app_path)).run()
+        issue = 'Error: "failed to create pod"'
+
+        app.text_area[0].set_value(issue)
+        app.button[1].click().run()
+
+        self.assertEqual(app.text_area[0].value, issue)
+        self.assertFalse(app.exception)
+
 
 if __name__ == "__main__":
     unittest.main()

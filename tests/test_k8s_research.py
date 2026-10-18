@@ -2,6 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import requests
 from google.genai.errors import APIError
 
 from k8s_research import (
@@ -10,6 +11,7 @@ from k8s_research import (
     SOURCES,
     SearchResult,
     _PageTextParser,
+    _fetch_page_content,
     _search_source,
     _resolve_latest_flash_lite_model,
     list_gemini_models,
@@ -32,6 +34,28 @@ class SearchParserTests(unittest.TestCase):
 
 
 class ResearchTests(unittest.TestCase):
+    @patch("k8s_research.requests.get")
+    def test_forbidden_page_falls_back_to_search_excerpt(self, get):
+        response = Mock()
+        response.raise_for_status.side_effect = requests.HTTPError(
+            "403 Client Error: Forbidden",
+            response=Mock(status_code=403),
+        )
+        get.return_value = response
+        result = SearchResult(
+            "Stack Overflow Kubernetes questions",
+            "Pods stuck in ContainerCreating",
+            "https://stackoverflow.com/questions/123",
+            "CNI configuration is missing",
+        )
+
+        page_result, error = _fetch_page_content(result)
+
+        self.assertIsNone(error)
+        self.assertEqual(page_result.snippet, result.snippet)
+        self.assertEqual(page_result.page_excerpt, "")
+        self.assertIn("HTTP 403", page_result.page_note)
+
     def test_rejects_issue_over_word_limit_before_search(self):
         with patch("k8s_research.DDGS") as ddgs:
             with self.assertRaisesRegex(ValueError, str(MAX_QUERY_WORDS)):

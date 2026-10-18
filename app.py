@@ -135,3 +135,5 @@ if investigation:
         excerpt = result.page_excerpt or result.snippet
         if excerpt:
             st.caption(excerpt[:600])
+        if result.page_note:
+            st.caption(result.page_note)

@@ -35,6 +35,9 @@ pages when available, and uses Gemini to summarize retrieved page text and
 search excerpts. DDGS uses automatic metasearch with a 30-second timeout; the
 app does not spoof TLS/JA3 fingerprints. If searches still time out, check
 outbound access or proxy settings for the app's host.
+Some sites (including community Q&A pages) may deny direct page access with
+HTTP 403. In that case, the app keeps the search result and uses its excerpt
+instead of retrying or attempting to bypass the site's access controls.
 LangGraph runs the stateless search-then-summarize workflow, and LangChain's
 Google Generative AI integration calls Gemini. The app does not use Google ADK:
 its single fixed workflow does not need a second agent/orchestration runtime.

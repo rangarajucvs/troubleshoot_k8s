@@ -41,6 +41,7 @@ class SearchResult:
     url: str
     snippet: str
     page_excerpt: str = ""
+    page_note: str = ""
 
 
 SOURCES = (
@@ -152,6 +153,23 @@ def _fetch_page_content(result: SearchResult) -> tuple[SearchResult, str | None]
             timeout=PAGE_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
+    except requests.HTTPError as exc:
+        status_code = exc.response.status_code if exc.response is not None else None
+        if status_code == 403:
+            return (
+                SearchResult(
+                    source=result.source,
+                    title=result.title,
+                    url=result.url,
+                    snippet=result.snippet,
+                    page_note=(
+                        "The page denied direct access (HTTP 403); the search-result "
+                        "excerpt is used instead."
+                    ),
+                ),
+                None,
+            )
+        return result, f"{result.source} page ({result.url}): {exc}"
     except requests.RequestException as exc:
         return result, f"{result.source} page ({result.url}): {exc}"
 
@@ -300,7 +318,8 @@ def synthesize_answer(
         f"[{index}] Source: {result.source}\n"
         f"Title: {result.title}\nURL: {result.url}\n"
         f"Search excerpt: {result.snippet[:500]}\n"
-        f"Retrieved page excerpt: {result.page_excerpt[:MAX_PAGE_EXCERPT_CHARS]}"
+        f"Retrieved page excerpt: {result.page_excerpt[:MAX_PAGE_EXCERPT_CHARS]}\n"
+        f"Page retrieval note: {result.page_note}"
         for index, result in enumerate(evidence, start=1)
     )
     if not evidence_text:

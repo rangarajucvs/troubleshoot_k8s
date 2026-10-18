@@ -10,6 +10,8 @@ import re
 from typing import Iterable, Literal, TypedDict
 
 import requests
+from ddgs import DDGS
+from ddgs.exceptions import DDGSException, RatelimitException, TimeoutException
 from google import genai
 from google.genai.errors import APIError
 from langgraph.graph import END, START, StateGraph
@@ -17,7 +19,7 @@ from langgraph.graph import END, START, StateGraph
 
 MAX_QUERY_WORDS = 50000
 MAX_ANSWER_WORDS = 100000
-SEARCH_TIMEOUT_SECONDS = 15
+SEARCH_TIMEOUT_SECONDS = 30
 PAGE_TIMEOUT_SECONDS = 10
 SYNTHESIS_TIMEOUT_SECONDS = 60
 MAX_SEARCH_QUERY_CHARS = 300
@@ -74,50 +76,6 @@ SOURCES = (
 )
 
 
-class _DuckDuckGoResultsParser(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self.results: list[dict[str, str]] = []
-        self._current: dict[str, str] | None = None
-        self._capture: str | None = None
-        self._text: list[str] = []
-        self._result_div_depth = 0
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        attributes = dict(attrs)
-        classes = set((attributes.get("class") or "").split())
-        if tag == "div" and "result" in classes and self._current is None:
-            self._current = {}
-            self._result_div_depth = 1
-        elif tag == "div" and self._current is not None:
-            self._result_div_depth += 1
-        if self._current is None or tag != "a":
-            return
-        if "result__a" in classes:
-            self._capture = "title"
-            self._current["url"] = attributes.get("href") or ""
-            self._text = []
-        elif "result__snippet" in classes:
-            self._capture = "snippet"
-            self._text = []
-
-    def handle_data(self, data: str) -> None:
-        if self._capture:
-            self._text.append(data)
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag == "a" and self._capture and self._current is not None:
-            self._current[self._capture] = " ".join("".join(self._text).split())
-            self._capture = None
-            self._text = []
-        elif tag == "div" and self._current is not None:
-            self._result_div_depth -= 1
-            if self._result_div_depth == 0:
-                if self._current.get("title") and self._current.get("url"):
-                    self.results.append(self._current)
-                self._current = None
-
-
 class _PageTextParser(HTMLParser):
     _IGNORED_ELEMENTS = {"script", "style", "noscript", "svg"}
     _BLOCK_ELEMENTS = {"br", "div", "li", "p", "pre", "section", "tr"}
@@ -152,26 +110,35 @@ def _search_source(
     search_terms = " ".join(issue.split())[:MAX_SEARCH_QUERY_CHARS]
     query = f"{source.restriction} Kubernetes {search_terms}"
     try:
-        response = requests.get(
-            "https://html.duckduckgo.com/html/",
-            params={"q": query},
-            headers={"User-Agent": "KubernetesIssueResearch/1.0"},
-            timeout=SEARCH_TIMEOUT_SECONDS,
+        with DDGS(timeout=SEARCH_TIMEOUT_SECONDS) as search_client:
+            search_results = search_client.text(
+                query,
+                region="us-en",
+                safesearch="moderate",
+                backend="auto",
+                max_results=result_limit,
+            )
+    except TimeoutException:
+        return [], (
+            f"{source.name}: search timed out after {SEARCH_TIMEOUT_SECONDS}s. "
+            "Check network connectivity or proxy settings and retry."
         )
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        return [], f"{source.name}: {exc}"
+    except RatelimitException as exc:
+        return [], f"{source.name}: search provider rate-limited the request: {exc}"
+    except DDGSException as exc:
+        return [], f"{source.name}: search failed: {exc}"
 
-    parser = _DuckDuckGoResultsParser()
-    parser.feed(response.text)
     results: list[SearchResult] = []
-    for item in parser.results[:result_limit]:
+    for item in search_results:
+        url = item.get("href") or item.get("url")
+        if not url:
+            continue
         results.append(
             SearchResult(
                 source=source.name,
-                title=item["title"],
-                url=item["url"],
-                snippet=item.get("snippet", ""),
+                title=item.get("title", "Untitled result"),
+                url=url,
+                snippet=item.get("body", item.get("snippet", "")),
             )
         )
     return results, None

@@ -9,8 +9,8 @@ from k8s_research import (
     MAX_QUERY_WORDS,
     SOURCES,
     SearchResult,
-    _DuckDuckGoResultsParser,
     _PageTextParser,
+    _search_source,
     _resolve_latest_flash_lite_model,
     list_gemini_models,
     research_issue,
@@ -20,26 +20,6 @@ from k8s_research import (
 
 
 class SearchParserTests(unittest.TestCase):
-    def test_extracts_result_title_url_and_snippet(self):
-        parser = _DuckDuckGoResultsParser()
-        parser.feed(
-            '<div class="result"><div class="result__body">'
-            '<a class="result__a" href="https://example.com">Pod scheduling</a>'
-            "<div><a class='result__snippet'>No nodes available</a></div>"
-            "</div></div>"
-        )
-
-        self.assertEqual(
-            parser.results,
-            [
-                {
-                    "url": "https://example.com",
-                    "title": "Pod scheduling",
-                    "snippet": "No nodes available",
-                }
-            ],
-        )
-
     def test_page_parser_omits_scripts_and_normalizes_page_text(self):
         parser = _PageTextParser()
         parser.feed(
@@ -53,10 +33,58 @@ class SearchParserTests(unittest.TestCase):
 
 class ResearchTests(unittest.TestCase):
     def test_rejects_issue_over_word_limit_before_search(self):
-        with patch("k8s_research.requests.get") as get:
+        with patch("k8s_research.DDGS") as ddgs:
             with self.assertRaisesRegex(ValueError, str(MAX_QUERY_WORDS)):
                 search_sources("error " * (MAX_QUERY_WORDS + 1))
-        get.assert_not_called()
+        ddgs.assert_not_called()
+
+    @patch("k8s_research.DDGS")
+    def test_search_uses_ddgs_and_converts_results(self, ddgs_class):
+        ddgs_class.return_value.__enter__.return_value.text.return_value = [
+            {
+                "title": "Pod scheduling",
+                "href": "https://example.com/pods",
+                "body": "No nodes available",
+            },
+            {"title": "Missing URL"},
+        ]
+
+        results, error = _search_source(SOURCES[0], "pod pending", result_limit=3)
+
+        self.assertIsNone(error)
+        self.assertEqual(
+            results,
+            [
+                SearchResult(
+                    SOURCES[0].name,
+                    "Pod scheduling",
+                    "https://example.com/pods",
+                    "No nodes available",
+                )
+            ],
+        )
+        ddgs_class.assert_called_once_with(timeout=30)
+        ddgs_class.return_value.__enter__.return_value.text.assert_called_once_with(
+            "site:kubernetes.io/docs Kubernetes pod pending",
+            region="us-en",
+            safesearch="moderate",
+            backend="auto",
+            max_results=3,
+        )
+
+    @patch("k8s_research.DDGS")
+    def test_search_reports_timeout_with_recovery_hint(self, ddgs_class):
+        from ddgs.exceptions import TimeoutException
+
+        ddgs_class.return_value.__enter__.return_value.text.side_effect = TimeoutException(
+            "connection timeout"
+        )
+
+        results, error = _search_source(SOURCES[0], "pod pending", result_limit=2)
+
+        self.assertEqual(results, [])
+        self.assertIn("timed out after 30s", error)
+        self.assertIn("proxy settings", error)
 
     @patch("k8s_research._search_source")
     def test_deduplicates_results_and_collects_source_errors(self, search_source):

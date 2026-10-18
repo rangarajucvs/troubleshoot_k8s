@@ -29,9 +29,12 @@ substitute for vendor guidance or testing changes in a safe environment.
 
 The app searches Kubernetes, EKS, GKE, AKS, and OKE documentation; selected
 Kubernetes/cloud-provider GitHub issue pages; Reddit; Stack Overflow; and
-Server Fault. It uses DuckDuckGo's HTML search endpoint for discovery, fetches
-the top matching page in each source group when available, and uses Gemini to
-summarize retrieved page text and search excerpts.
+Server Fault. It uses the maintained `ddgs` package for discovery (the
+`duckduckgo-search` project has been renamed to `ddgs`), fetches top matching
+pages when available, and uses Gemini to summarize retrieved page text and
+search excerpts. DDGS uses automatic metasearch with a 30-second timeout; the
+app does not spoof TLS/JA3 fingerprints. If searches still time out, check
+outbound access or proxy settings for the app's host.
 LangGraph runs the stateless search-then-summarize workflow, and LangChain's
 Google Generative AI integration calls Gemini. The app does not use Google ADK:
 its single fixed workflow does not need a second agent/orchestration runtime.

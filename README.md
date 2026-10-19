@@ -23,9 +23,10 @@ substitute for vendor guidance or testing changes in a safe environment.
 4. Enter your Gemini API key at the top of the page. Available Gemini models
    load automatically when you enter or change the key. Type the Kubernetes
    issue in the text area, then choose a model from the dropdown below it. The
-   list includes only Gemini 3 and Gemini 4 Flash, Flash-Lite, Flash-TTS, and
-   Flash-Lite-TTS models enabled for your key that support generation. The
-   default option uses the newest available stable Flash model. The key is
+   list includes only the newest available Gemini 3 and Gemini 4 Flash and
+   Flash-Lite model versions enabled for your key that support generation;
+   TTS variants, preview models, and older versions are omitted. The default option uses the
+   newest available stable Flash model. The key is
    cleared from the session after a research submission; re-enter it for the
    next investigation. The issue text remains available after submission.
 

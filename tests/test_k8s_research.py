@@ -223,8 +223,7 @@ class ResearchTests(unittest.TestCase):
                 "gemini-4.1-flash",
                 "gemini-4.1-flash-lite",
                 "gemini-4.1-flash-preview",
-                "gemini-4.1-flash-lite-tts",
-                "gemini-4.1-flash-tts",
+                "gemini-4.1-flash-lite-preview",
                 "gemini-3.1-flash",
             ]
         )
@@ -232,10 +231,12 @@ class ResearchTests(unittest.TestCase):
         self.assertEqual(selected_model, "gemini-4.1-flash")
         self.assertEqual(
             _resolve_default_gemini_model(
-                ["gemini-4.1-flash-lite", "gemini-4.1-flash-lite-tts"]
+                ["gemini-4.1-flash-lite"]
             ),
             "gemini-4.1-flash-lite",
         )
+        with self.assertRaisesRegex(RuntimeError, "did not list a Gemini 3 or Gemini 4 model"):
+            _resolve_default_gemini_model(["gemini-4.2-flash-preview"])
 
     @patch("k8s_research.genai.Client")
     def test_lists_only_models_supporting_generation(self, client_class):
@@ -245,10 +246,19 @@ class ResearchTests(unittest.TestCase):
                 name="models/gemini-3.1-flash-lite",
                 supported_actions=["generateContent"],
             ),
+            SimpleNamespace(name="models/gemini-3.2-flash", supported_actions=["generateContent"]),
+            SimpleNamespace(name="models/gemini-3.6-flash", supported_actions=["generateContent"]),
+            SimpleNamespace(name="models/gemini-3.8-flash-preview", supported_actions=["generateContent"]),
+            SimpleNamespace(name="models/gemini-3.8-flash", supported_actions=["generateContent"]),
+            SimpleNamespace(name="models/gemini-3.9-flash-preview", supported_actions=["generateContent"]),
+            SimpleNamespace(name="models/gemini-3.6-flash-lite", supported_actions=["generateContent"]),
+            SimpleNamespace(name="models/gemini-3.8-flash-lite", supported_actions=["generateContent"]),
+            SimpleNamespace(name="models/gemini-3.9-flash-lite-preview", supported_actions=["generateContent"]),
             SimpleNamespace(name="models/gemini-4.1-flash", supported_actions=["generateContent"]),
+            SimpleNamespace(name="models/gemini-4.1-flash-lite", supported_actions=["generateContent"]),
+            SimpleNamespace(name="models/gemini-4.1-flash-lite-preview", supported_actions=["generateContent"]),
             SimpleNamespace(name="models/gemini-4.1-flash-tts", supported_actions=["generateContent"]),
             SimpleNamespace(name="models/gemini-4.1-flash-lite-tts", supported_actions=["generateContent"]),
-            SimpleNamespace(name="models/gemini-4.1-flash-lite-tts-preview", supported_actions=["generateContent"]),
             SimpleNamespace(name="models/gemini-4.1-pro", supported_actions=["generateContent"]),
             SimpleNamespace(name="models/gemini-4.1-tts", supported_actions=["generateContent"]),
             SimpleNamespace(name="models/gemini-4.1-flash-experimental", supported_actions=["generateContent"]),
@@ -261,11 +271,10 @@ class ResearchTests(unittest.TestCase):
         self.assertEqual(
             models,
             [
-                "gemini-3.1-flash-lite",
+                "gemini-3.8-flash",
+                "gemini-3.8-flash-lite",
                 "gemini-4.1-flash",
-                "gemini-4.1-flash-lite-tts",
-                "gemini-4.1-flash-lite-tts-preview",
-                "gemini-4.1-flash-tts",
+                "gemini-4.1-flash-lite",
             ],
         )
         client_class.assert_called_once_with(api_key="user-key")

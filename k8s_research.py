@@ -26,7 +26,7 @@ MAX_SEARCH_QUERY_CHARS = 300
 MAX_PAGE_EXCERPT_CHARS = 1800
 SUPPORTED_GEMINI_MODEL_VERSIONS = {3, 4}
 GEMINI_MODEL_VERSION_PATTERN = re.compile(
-    r"^gemini-(\d+(?:\.\d+)*)(?:-(?:pro|flash)(?:-|$))"
+    r"^gemini-(\d+(?:\.\d+)*)(?:-flash(?:-lite)?(?:-tts)?)(?:-preview(?:-[a-z0-9]+)*)?$"
 )
 AUTO_MODEL_OPTION = "Auto (best available Gemini 4/3)"
 
@@ -290,31 +290,28 @@ def _is_supported_gemini_model(name: str) -> bool:
 
 
 def _resolve_default_gemini_model(available_models: Iterable[str]) -> str:
-    """Choose the newest Gemini 3/4 model, preferring Pro for troubleshooting."""
-    candidates: list[tuple[tuple[int, ...], int, int, str]] = []
+    """Choose the newest stable Gemini 3/4 Flash model, preferring non-Lite."""
+    candidates: list[tuple[tuple[int, ...], int, int, int, str]] = []
     for name in available_models:
         version_match = GEMINI_MODEL_VERSION_PATTERN.match(name)
         if not version_match or not _is_supported_gemini_model(name):
             continue
         version = tuple(int(part) for part in version_match.group(1).split("."))
         lowered_name = name.lower()
-        if "-pro" in lowered_name:
-            model_family_rank = 2
-        elif "-flash-lite" in lowered_name:
+        if "-flash-lite" in lowered_name:
             model_family_rank = 0
-        elif "-flash" in lowered_name:
-            model_family_rank = 1
         else:
-            model_family_rank = 0
+            model_family_rank = 1
         stability_rank = 1 if "preview" not in lowered_name else 0
-        candidates.append((version, stability_rank, model_family_rank, name))
+        tts_rank = 0 if "-tts" in lowered_name else 1
+        candidates.append((version, stability_rank, model_family_rank, tts_rank, name))
 
     if not candidates:
         raise RuntimeError(
             "Google did not list a Gemini 3 or Gemini 4 model for this key. "
             "Choose a model explicitly from the dropdown."
         )
-    return max(candidates)[3]
+    return max(candidates)[4]
 
 
 def _extract_response_text(content: object) -> str:

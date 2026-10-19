@@ -194,8 +194,8 @@ class ResearchTests(unittest.TestCase):
         self.assertEqual(errors, ["source unavailable"])
         fetch_page.assert_called_once_with(result)
 
-    @patch("k8s_research._resolve_default_gemini_model", return_value="gemini-4.1-pro")
-    @patch("k8s_research.list_gemini_models", return_value=["gemini-4.1-pro"])
+    @patch("k8s_research._resolve_default_gemini_model", return_value="gemini-4.1-flash")
+    @patch("k8s_research.list_gemini_models", return_value=["gemini-4.1-flash"])
     @patch("langchain_google_genai.ChatGoogleGenerativeAI")
     def test_synthesis_uses_default_gemini_model_and_caps_response(
         self, chat_model, _list_models, resolve_model
@@ -212,28 +212,29 @@ class ResearchTests(unittest.TestCase):
 
         self.assertEqual(len(answer.split()), MAX_ANSWER_WORDS)
         kwargs = chat_model.call_args.kwargs
-        self.assertEqual(kwargs["model"], "gemini-4.1-pro")
+        self.assertEqual(kwargs["model"], "gemini-4.1-flash")
         self.assertEqual(kwargs["google_api_key"], "test-key")
         self.assertEqual(kwargs["max_output_tokens"], 1800)
-        resolve_model.assert_called_once_with(["gemini-4.1-pro"])
+        resolve_model.assert_called_once_with(["gemini-4.1-flash"])
 
-    def test_resolver_prefers_newest_pro_model_for_troubleshooting(self):
+    def test_resolver_selects_newest_stable_flash_model(self):
         selected_model = _resolve_default_gemini_model(
             [
-                "gemini-2.5-pro",
-                "gemini-3.1-pro",
                 "gemini-4.1-flash",
-                "gemini-4.1-pro-preview",
-                "gemini-4.1-pro",
+                "gemini-4.1-flash-lite",
+                "gemini-4.1-flash-preview",
+                "gemini-4.1-flash-lite-tts",
+                "gemini-4.1-flash-tts",
+                "gemini-3.1-flash",
             ]
         )
 
-        self.assertEqual(selected_model, "gemini-4.1-pro")
+        self.assertEqual(selected_model, "gemini-4.1-flash")
         self.assertEqual(
             _resolve_default_gemini_model(
-                ["gemini-4.1-flash-lite", "gemini-4.1-flash"]
+                ["gemini-4.1-flash-lite", "gemini-4.1-flash-lite-tts"]
             ),
-            "gemini-4.1-flash",
+            "gemini-4.1-flash-lite",
         )
 
     @patch("k8s_research.genai.Client")
@@ -244,15 +245,29 @@ class ResearchTests(unittest.TestCase):
                 name="models/gemini-3.1-flash-lite",
                 supported_actions=["generateContent"],
             ),
+            SimpleNamespace(name="models/gemini-4.1-flash", supported_actions=["generateContent"]),
+            SimpleNamespace(name="models/gemini-4.1-flash-tts", supported_actions=["generateContent"]),
+            SimpleNamespace(name="models/gemini-4.1-flash-lite-tts", supported_actions=["generateContent"]),
+            SimpleNamespace(name="models/gemini-4.1-flash-lite-tts-preview", supported_actions=["generateContent"]),
             SimpleNamespace(name="models/gemini-4.1-pro", supported_actions=["generateContent"]),
-            SimpleNamespace(name="models/gemini-2.5-pro", supported_actions=["generateContent"]),
             SimpleNamespace(name="models/gemini-4.1-tts", supported_actions=["generateContent"]),
+            SimpleNamespace(name="models/gemini-4.1-flash-experimental", supported_actions=["generateContent"]),
+            SimpleNamespace(name="models/gemini-2.5-flash", supported_actions=["generateContent"]),
             SimpleNamespace(name="models/embedding-001", supported_actions=["embedContent"]),
         ]
 
         models = list_gemini_models("user-key")
 
-        self.assertEqual(models, ["gemini-3.1-flash-lite", "gemini-4.1-pro"])
+        self.assertEqual(
+            models,
+            [
+                "gemini-3.1-flash-lite",
+                "gemini-4.1-flash",
+                "gemini-4.1-flash-lite-tts",
+                "gemini-4.1-flash-lite-tts-preview",
+                "gemini-4.1-flash-tts",
+            ],
+        )
         client_class.assert_called_once_with(api_key="user-key")
         client_class.return_value.close.assert_called_once_with()
 

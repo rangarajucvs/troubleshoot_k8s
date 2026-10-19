@@ -39,7 +39,7 @@ class AppTests(unittest.TestCase):
         self.assertEqual(app.session_state["gemini_api_key"], "")
         self.assertFalse(app.exception)
 
-    @patch("k8s_research.list_gemini_models", return_value=["gemini-4.1-pro"])
+    @patch("k8s_research.list_gemini_models", return_value=["gemini-4.1-flash"])
     def test_entering_gemini_key_loads_models_without_a_load_button(self, list_models):
         app_path = Path(__file__).resolve().parents[1] / "app.py"
         app = AppTest.from_file(str(app_path)).run()
@@ -49,7 +49,7 @@ class AppTests(unittest.TestCase):
         list_models.assert_called_once_with("temporary-test-key")
         self.assertEqual(
             app.selectbox[0].options,
-            ["Auto (best available Gemini 4/3)", "gemini-4.1-pro"],
+            ["Auto (best available Gemini 4/3)", "gemini-4.1-flash"],
         )
         self.assertEqual(
             [button.label for button in app.button],

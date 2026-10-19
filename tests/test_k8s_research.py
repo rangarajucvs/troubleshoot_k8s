@@ -13,7 +13,7 @@ from k8s_research import (
     _PageTextParser,
     _fetch_page_content,
     _search_source,
-    _resolve_latest_flash_lite_model,
+    _resolve_default_gemini_model,
     list_gemini_models,
     research_issue,
     search_sources,
@@ -194,10 +194,10 @@ class ResearchTests(unittest.TestCase):
         self.assertEqual(errors, ["source unavailable"])
         fetch_page.assert_called_once_with(result)
 
-    @patch("k8s_research._resolve_latest_flash_lite_model", return_value="gemini-3.1-flash-lite")
-    @patch("k8s_research.list_gemini_models", return_value=["gemini-3.1-flash-lite"])
+    @patch("k8s_research._resolve_default_gemini_model", return_value="gemini-4.1-pro")
+    @patch("k8s_research.list_gemini_models", return_value=["gemini-4.1-pro"])
     @patch("langchain_google_genai.ChatGoogleGenerativeAI")
-    def test_synthesis_uses_latest_flash_lite_and_caps_response(
+    def test_synthesis_uses_default_gemini_model_and_caps_response(
         self, chat_model, _list_models, resolve_model
     ):
         chat_model.return_value.invoke.return_value = Mock(
@@ -212,21 +212,29 @@ class ResearchTests(unittest.TestCase):
 
         self.assertEqual(len(answer.split()), MAX_ANSWER_WORDS)
         kwargs = chat_model.call_args.kwargs
-        self.assertEqual(kwargs["model"], "gemini-3.1-flash-lite")
+        self.assertEqual(kwargs["model"], "gemini-4.1-pro")
         self.assertEqual(kwargs["google_api_key"], "test-key")
         self.assertEqual(kwargs["max_output_tokens"], 1800)
-        resolve_model.assert_called_once_with(["gemini-3.1-flash-lite"])
+        resolve_model.assert_called_once_with(["gemini-4.1-pro"])
 
-    def test_resolver_selects_newest_stable_flash_lite(self):
-        selected_model = _resolve_latest_flash_lite_model(
+    def test_resolver_prefers_newest_pro_model_for_troubleshooting(self):
+        selected_model = _resolve_default_gemini_model(
             [
-                "gemini-2.5-flash-lite",
-                "gemini-3.1-flash-lite",
-                "gemini-3.8-flash-lite-preview",
+                "gemini-2.5-pro",
+                "gemini-3.1-pro",
+                "gemini-4.1-flash",
+                "gemini-4.1-pro-preview",
+                "gemini-4.1-pro",
             ]
         )
 
-        self.assertEqual(selected_model, "gemini-3.1-flash-lite")
+        self.assertEqual(selected_model, "gemini-4.1-pro")
+        self.assertEqual(
+            _resolve_default_gemini_model(
+                ["gemini-4.1-flash-lite", "gemini-4.1-flash"]
+            ),
+            "gemini-4.1-flash",
+        )
 
     @patch("k8s_research.genai.Client")
     def test_lists_only_models_supporting_generation(self, client_class):
@@ -236,12 +244,15 @@ class ResearchTests(unittest.TestCase):
                 name="models/gemini-3.1-flash-lite",
                 supported_actions=["generateContent"],
             ),
+            SimpleNamespace(name="models/gemini-4.1-pro", supported_actions=["generateContent"]),
+            SimpleNamespace(name="models/gemini-2.5-pro", supported_actions=["generateContent"]),
+            SimpleNamespace(name="models/gemini-4.1-tts", supported_actions=["generateContent"]),
             SimpleNamespace(name="models/embedding-001", supported_actions=["embedContent"]),
         ]
 
         models = list_gemini_models("user-key")
 
-        self.assertEqual(models, ["gemini-3.1-flash-lite"])
+        self.assertEqual(models, ["gemini-3.1-flash-lite", "gemini-4.1-pro"])
         client_class.assert_called_once_with(api_key="user-key")
         client_class.return_value.close.assert_called_once_with()
 
@@ -282,6 +293,19 @@ class ResearchTests(unittest.TestCase):
         self.assertEqual(answer, "Summary of problem.\nNext steps.")
 
     @patch("langchain_google_genai.ChatGoogleGenerativeAI")
+    def test_system_prompt_describes_kubernetes_expertise(self, chat_model):
+        chat_model.return_value.invoke.return_value = Mock(content="Summary")
+
+        synthesize_answer("pod pending", [], api_key="test-key", model="gemini-4.1-pro")
+
+        system_prompt = chat_model.return_value.invoke.call_args.args[0][0].content
+        self.assertIn(
+            "Kubernetes expert with over 20 years of experience supporting "
+            "various Kubernetes flavors across various on-premise and public cloud ecosystems",
+            system_prompt,
+        )
+
+    @patch("langchain_google_genai.ChatGoogleGenerativeAI")
     def test_empty_gemini_response_has_actionable_diagnostic(self, chat_model):
         chat_model.return_value.invoke.return_value = Mock(
             content="",
@@ -301,10 +325,10 @@ class ResearchTests(unittest.TestCase):
 
     @patch.dict("os.environ", {}, clear=True)
     @patch(
-        "k8s_research._resolve_latest_flash_lite_model",
-        return_value="gemini-3.1-flash-lite",
+        "k8s_research._resolve_default_gemini_model",
+        return_value="gemini-4.1-pro",
     )
-    @patch("k8s_research.list_gemini_models", return_value=["gemini-3.1-flash-lite"])
+    @patch("k8s_research.list_gemini_models", return_value=["gemini-4.1-pro"])
     @patch("langchain_google_genai.ChatGoogleGenerativeAI")
     def test_synthesis_surfaces_gemini_api_errors(
         self, chat_model, _list_models, _resolve_model

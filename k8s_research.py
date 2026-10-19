@@ -24,8 +24,11 @@ PAGE_TIMEOUT_SECONDS = 10
 SYNTHESIS_TIMEOUT_SECONDS = 60
 MAX_SEARCH_QUERY_CHARS = 300
 MAX_PAGE_EXCERPT_CHARS = 1800
-FLASH_LITE_MODEL_PATTERN = re.compile(r"^gemini-(\d+(?:\.\d+)*)-flash-lite$")
-AUTO_MODEL_OPTION = "Auto (newest stable Flash-Lite)"
+SUPPORTED_GEMINI_MODEL_VERSIONS = {3, 4}
+GEMINI_MODEL_VERSION_PATTERN = re.compile(
+    r"^gemini-(\d+(?:\.\d+)*)(?:-(?:pro|flash)(?:-|$))"
+)
+AUTO_MODEL_OPTION = "Auto (best available Gemini 4/3)"
 
 
 @dataclass(frozen=True)
@@ -255,42 +258,63 @@ def search_sources(issue: str, result_limit: int = 2) -> tuple[list[SearchResult
 
 
 def list_gemini_models(api_key: str) -> list[str]:
-    """List Gemini models enabled for the supplied key that support generation."""
+    """List supported Gemini 3/4 models enabled for the supplied key."""
     client = genai.Client(api_key=api_key)
     try:
         try:
-            names = {
-                (available_model.name or "").removeprefix("models/")
-                for available_model in client.models.list()
-                if "generateContent" in (available_model.supported_actions or [])
-                and (available_model.name or "")
-                .removeprefix("models/")
-                .startswith("gemini-")
-            }
+            names = set()
+            for available_model in client.models.list():
+                name = (available_model.name or "").removeprefix("models/")
+                if (
+                    "generateContent" in (available_model.supported_actions or [])
+                    and _is_supported_gemini_model(name)
+                ):
+                    names.add(name)
         except APIError as exc:
             raise RuntimeError(f"Could not load Gemini models: {exc}") from exc
     finally:
         client.close()
     if not names:
-        raise RuntimeError("Google did not list any Gemini models that support generation.")
+        raise RuntimeError(
+            "Google did not list any Gemini 3 or Gemini 4 models that support generation."
+        )
     return sorted(names)
 
 
-def _resolve_latest_flash_lite_model(available_models: Iterable[str]) -> str:
-    """Choose the newest stable Flash-Lite model from an available model list."""
-    candidates: list[tuple[tuple[int, ...], str]] = []
+def _is_supported_gemini_model(name: str) -> bool:
+    version_match = GEMINI_MODEL_VERSION_PATTERN.match(name)
+    return bool(
+        version_match
+        and int(version_match.group(1).split(".")[0]) in SUPPORTED_GEMINI_MODEL_VERSIONS
+    )
+
+
+def _resolve_default_gemini_model(available_models: Iterable[str]) -> str:
+    """Choose the newest Gemini 3/4 model, preferring Pro for troubleshooting."""
+    candidates: list[tuple[tuple[int, ...], int, int, str]] = []
     for name in available_models:
-        version_match = FLASH_LITE_MODEL_PATTERN.fullmatch(name)
-        if version_match:
-            version = tuple(int(part) for part in version_match.group(1).split("."))
-            candidates.append((version, name))
+        version_match = GEMINI_MODEL_VERSION_PATTERN.match(name)
+        if not version_match or not _is_supported_gemini_model(name):
+            continue
+        version = tuple(int(part) for part in version_match.group(1).split("."))
+        lowered_name = name.lower()
+        if "-pro" in lowered_name:
+            model_family_rank = 2
+        elif "-flash-lite" in lowered_name:
+            model_family_rank = 0
+        elif "-flash" in lowered_name:
+            model_family_rank = 1
+        else:
+            model_family_rank = 0
+        stability_rank = 1 if "preview" not in lowered_name else 0
+        candidates.append((version, stability_rank, model_family_rank, name))
 
     if not candidates:
         raise RuntimeError(
-            "Google did not list a stable Gemini Flash-Lite model for this key. "
+            "Google did not list a Gemini 3 or Gemini 4 model for this key. "
             "Choose a model explicitly from the dropdown."
         )
-    return max(candidates)[1]
+    return max(candidates)[3]
 
 
 def _extract_response_text(content: object) -> str:
@@ -315,7 +339,7 @@ def synthesize_answer(
     model: str | None = None,
     available_models: Iterable[str] | None = None,
 ) -> str:
-    """Use the newest stable cost-efficient Gemini Flash-Lite model by default."""
+    """Use the newest available Gemini 3/4 model by default."""
     api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError(
@@ -338,8 +362,10 @@ def synthesize_answer(
         evidence_text = "No search results were found."
 
     instructions = (
-        "You are a Kubernetes troubleshooting research assistant. Give best-effort "
-        "guidance, not a guarantee. Use exactly these three headings: "
+        "You are a Kubernetes expert with over 20 years of experience supporting "
+        "various Kubernetes flavors across various on-premise and public cloud "
+        "ecosystems. Give best-effort guidance, not a guarantee. Use exactly these "
+        "three headings: "
         "'Summary of problem statement', 'Where the problem could be', and "
         "'What next steps engineer could do to resolve the issue on their own'. "
         "Base claims on the provided search excerpts, distinguish likely causes "
@@ -351,7 +377,7 @@ def synthesize_answer(
     try:
         model = (
             model
-            or _resolve_latest_flash_lite_model(
+            or _resolve_default_gemini_model(
                 available_models or list_gemini_models(api_key)
             )
         )

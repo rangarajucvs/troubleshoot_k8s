@@ -11,7 +11,7 @@ class AppTests(unittest.TestCase):
         app.text_area[0].set_value("Pod is stuck in Pending")
         app.run()
 
-        app.button[1].click().run()
+        app.button[2].click().run()
 
         self.assertEqual(app.text_area[0].value, "")
         self.assertEqual(app.text_input[0].value, "")
@@ -26,13 +26,25 @@ class AppTests(unittest.TestCase):
         self.assertEqual(app.selectbox[0].label, "Gemini model")
         self.assertFalse(app.exception)
 
+    def test_gemini_key_is_cleared_after_form_submission(self):
+        app_path = Path(__file__).resolve().parents[1] / "app.py"
+        app = AppTest.from_file(str(app_path)).run()
+        app.text_input[0].set_value("temporary-test-key")
+        app.run()
+
+        app.button[1].click().run()
+
+        self.assertEqual(app.text_input[0].value, "")
+        self.assertEqual(app.session_state["gemini_api_key"], "")
+        self.assertFalse(app.exception)
+
     def test_issue_text_area_accepts_double_quotes(self):
         app_path = Path(__file__).resolve().parents[1] / "app.py"
         app = AppTest.from_file(str(app_path)).run()
         issue = 'Error: "failed to create pod"'
 
         app.text_area[0].set_value(issue)
-        app.button[1].click().run()
+        app.run()
 
         self.assertEqual(app.text_area[0].value, issue)
         self.assertFalse(app.exception)

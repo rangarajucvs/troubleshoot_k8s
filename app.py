@@ -27,19 +27,36 @@ st.caption(
 )
 
 
-def reset_gemini_models() -> None:
-    st.session_state.pop("available_gemini_models", None)
+available_models = st.session_state.get("available_gemini_models", [])
+model_options = [AUTO_MODEL_OPTION, *available_models]
+if st.session_state.get("gemini_model") not in model_options:
     st.session_state["gemini_model"] = AUTO_MODEL_OPTION
+st.selectbox("Gemini model", model_options, key="gemini_model")
 
-
-st.text_input(
-    "Gemini API key",
-    type="password",
-    key="gemini_api_key",
-    help="Your key is kept only in this Streamlit session and is not saved with results.",
-    on_change=reset_gemini_models,
+issue_text = st.text_area(
+    "Kubernetes issue or error",
+    key="issue_input",
+    height=180,
+    placeholder="Paste the error message and relevant context here...",
+    help=(
+        f"Maximum {MAX_QUERY_WORDS} words. Double quotes are allowed, "
+        'for example: "Failed to create pod".'
+    ),
 )
-if st.button("Load available Gemini models"):
+with st.form("gemini_key_form", clear_on_submit=True):
+    st.text_input(
+        "Gemini API key",
+        type="password",
+        key="gemini_api_key",
+        help=(
+            "Your key is used for this submission and cleared from the session "
+            "when you load models or research an issue."
+        ),
+    )
+    load_models = st.form_submit_button("Load available Gemini models")
+    submitted = st.form_submit_button("Research issue", type="primary")
+
+if load_models:
     api_key = st.session_state.get("gemini_api_key", "").strip()
     if not api_key:
         st.error("Enter your Gemini API key before loading models.")
@@ -53,29 +70,9 @@ if st.button("Load available Gemini models"):
             st.session_state.pop("available_gemini_models", None)
             st.error(str(exc))
 
-available_models = st.session_state.get("available_gemini_models", [])
-model_options = [AUTO_MODEL_OPTION, *available_models]
-if st.session_state.get("gemini_model") not in model_options:
-    st.session_state["gemini_model"] = AUTO_MODEL_OPTION
-st.selectbox("Gemini model", model_options, key="gemini_model")
-
-
 def clear_investigation() -> None:
     st.session_state.clear()
 
-
-with st.form("investigation_form", clear_on_submit=False):
-    issue_text = st.text_area(
-        "Kubernetes issue or error",
-        key="issue_input",
-        height=180,
-        placeholder="Paste the error message and relevant context here...",
-        help=(
-            f"Maximum {MAX_QUERY_WORDS} words. Double quotes are allowed, "
-            'for example: "Failed to create pod".'
-        ),
-    )
-    submitted = st.form_submit_button("Research issue", type="primary")
 
 st.button("Clear and start a new investigation", on_click=clear_investigation)
 

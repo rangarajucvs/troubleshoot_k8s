@@ -27,11 +27,40 @@ st.caption(
 )
 
 
-available_models = st.session_state.get("available_gemini_models", [])
-model_options = [AUTO_MODEL_OPTION, *available_models]
-if st.session_state.get("gemini_model") not in model_options:
+def load_gemini_models() -> None:
+    api_key = st.session_state.get("gemini_api_key", "").strip()
+    st.session_state.pop("gemini_model_load_error", None)
+    st.session_state.pop("available_gemini_models", None)
     st.session_state["gemini_model"] = AUTO_MODEL_OPTION
-st.selectbox("Gemini model", model_options, key="gemini_model")
+    if not api_key:
+        return
+
+    try:
+        st.session_state["available_gemini_models"] = list_gemini_models(api_key)
+    except RuntimeError as exc:
+        st.session_state["gemini_model_load_error"] = str(exc)
+
+
+def prepare_research() -> None:
+    st.session_state["submitted_gemini_api_key"] = st.session_state.get(
+        "gemini_api_key", ""
+    ).strip()
+    st.session_state["gemini_api_key"] = ""
+
+
+def clear_investigation() -> None:
+    st.session_state.clear()
+
+
+st.text_input(
+    "Gemini API key",
+    type="password",
+    key="gemini_api_key",
+    help="Available Gemini models load automatically when you enter or change the key.",
+    on_change=load_gemini_models,
+)
+if st.session_state.get("gemini_model_load_error"):
+    st.error(st.session_state["gemini_model_load_error"])
 
 issue_text = st.text_area(
     "Kubernetes issue or error",
@@ -43,58 +72,40 @@ issue_text = st.text_area(
         'for example: "Failed to create pod".'
     ),
 )
-with st.form("gemini_key_form", clear_on_submit=True):
-    st.text_input(
-        "Gemini API key",
-        type="password",
-        key="gemini_api_key",
-        help=(
-            "Your key is used for this submission and cleared from the session "
-            "when you load models or research an issue."
-        ),
-    )
-    load_models = st.form_submit_button("Load available Gemini models")
-    submitted = st.form_submit_button("Research issue", type="primary")
 
-if load_models:
-    api_key = st.session_state.get("gemini_api_key", "").strip()
-    if not api_key:
-        st.error("Enter your Gemini API key before loading models.")
-        st.session_state.pop("available_gemini_models", None)
-    else:
-        try:
-            with st.spinner("Loading models available to this API key..."):
-                st.session_state["available_gemini_models"] = list_gemini_models(api_key)
-            st.session_state["gemini_model"] = AUTO_MODEL_OPTION
-        except RuntimeError as exc:
-            st.session_state.pop("available_gemini_models", None)
-            st.error(str(exc))
+available_models = st.session_state.get("available_gemini_models", [])
+model_options = [AUTO_MODEL_OPTION, *available_models]
+if st.session_state.get("gemini_model") not in model_options:
+    st.session_state["gemini_model"] = AUTO_MODEL_OPTION
+st.selectbox("Gemini model", model_options, key="gemini_model")
 
-def clear_investigation() -> None:
-    st.session_state.clear()
-
-
+submitted = st.button(
+    "Research issue",
+    type="primary",
+    on_click=prepare_research,
+)
 st.button("Clear and start a new investigation", on_click=clear_investigation)
 
 if submitted:
     st.session_state.pop("investigation", None)
     issue = issue_text.strip()
+    api_key = st.session_state.pop("submitted_gemini_api_key", "")
     word_count = len(issue.split())
     if not issue:
         st.error("Enter an issue or error message to investigate.")
     elif word_count > MAX_QUERY_WORDS:
         st.error(f"The issue cannot exceed {MAX_QUERY_WORDS} words (currently {word_count}).")
-    elif not st.session_state.get("gemini_api_key", "").strip():
-        st.error("Enter your Gemini API key before researching an issue.")
+    elif not api_key:
+        st.error("Enter your Gemini API key.")
     elif not available_models:
-        st.error("Load the models available to your API key before researching an issue.")
+        st.error("Enter a valid Gemini API key and wait for its models to load.")
     else:
         try:
             with st.spinner("Searching Kubernetes sources and preparing a response..."):
                 selected_model = st.session_state["gemini_model"]
                 answer, results, _ = research_issue(
                     issue,
-                    api_key=st.session_state["gemini_api_key"].strip(),
+                    api_key=api_key,
                     model=None if selected_model == AUTO_MODEL_OPTION else selected_model,
                     available_models=available_models,
                 )

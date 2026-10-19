@@ -20,16 +20,15 @@ substitute for vendor guidance or testing changes in a safe environment.
    streamlit run app.py
    ```
 
-4. Paste your Gemini API key in the password-masked field, select **Load
-   available Gemini models**, then choose a model from the dropdown. The list
-   includes only Gemini 3 and Gemini 4 models enabled for your key that support
-   generation. The default option uses the newest available version, preferring
-   stable Pro models over Flash models of the same version for troubleshooting.
-   The key is used only for the current submission and is cleared from the
-   Streamlit session after either action; it is not written to source files or
-   investigation results. Re-enter it for each action, and reload the model
-   list if you use a different key. The issue text remains available after a
-   submission.
+4. Enter your Gemini API key at the top of the page. Available Gemini models
+   load automatically when you enter or change the key. Type the Kubernetes
+   issue in the text area, then choose a model from the dropdown below it. The
+   list includes only Gemini 3 and Gemini 4 models enabled for your key that
+   support generation. The default option uses the newest available version,
+   preferring stable Pro models over Flash models of the same version for
+   troubleshooting. The key is cleared from the session after a research
+   submission; re-enter it for the next investigation. The issue text remains
+   available after submission.
 
 The app searches Kubernetes, EKS, AWS re:Post Knowledge Center, GKE, AKS, OKE,
 and Red Hat OpenShift documentation; selected Kubernetes/cloud-provider GitHub

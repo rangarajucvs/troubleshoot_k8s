@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 
@@ -11,7 +12,7 @@ class AppTests(unittest.TestCase):
         app.text_area[0].set_value("Pod is stuck in Pending")
         app.run()
 
-        app.button[2].click().run()
+        app.button[1].click().run()
 
         self.assertEqual(app.text_area[0].value, "")
         self.assertEqual(app.text_input[0].value, "")
@@ -26,16 +27,34 @@ class AppTests(unittest.TestCase):
         self.assertEqual(app.selectbox[0].label, "Gemini model")
         self.assertFalse(app.exception)
 
-    def test_gemini_key_is_cleared_after_form_submission(self):
+    def test_gemini_key_is_cleared_after_research_submission(self):
         app_path = Path(__file__).resolve().parents[1] / "app.py"
         app = AppTest.from_file(str(app_path)).run()
         app.text_input[0].set_value("temporary-test-key")
         app.run()
 
-        app.button[1].click().run()
+        app.button[0].click().run()
 
         self.assertEqual(app.text_input[0].value, "")
         self.assertEqual(app.session_state["gemini_api_key"], "")
+        self.assertFalse(app.exception)
+
+    @patch("k8s_research.list_gemini_models", return_value=["gemini-4.1-pro"])
+    def test_entering_gemini_key_loads_models_without_a_load_button(self, list_models):
+        app_path = Path(__file__).resolve().parents[1] / "app.py"
+        app = AppTest.from_file(str(app_path)).run()
+        app.text_input[0].set_value("temporary-test-key")
+        app.run()
+
+        list_models.assert_called_once_with("temporary-test-key")
+        self.assertEqual(
+            app.selectbox[0].options,
+            ["Auto (best available Gemini 4/3)", "gemini-4.1-pro"],
+        )
+        self.assertEqual(
+            [button.label for button in app.button],
+            ["Research issue", "Clear and start a new investigation"],
+        )
         self.assertFalse(app.exception)
 
     def test_issue_text_area_accepts_double_quotes(self):
